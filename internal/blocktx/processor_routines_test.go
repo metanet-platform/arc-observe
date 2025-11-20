@@ -1,0 +1,182 @@
+package blocktx_test
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/bitcoin-sv/arc/internal/blocktx/bcnet"
+	"github.com/bitcoin-sv/arc/internal/blocktx/bcnet/blocktx_p2p"
+	"github.com/bitcoin-sv/arc/internal/blocktx/mocks"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bitcoin-sv/arc/internal/blocktx"
+	"github.com/bitcoin-sv/arc/internal/blocktx/blocktx_api"
+	"github.com/bitcoin-sv/arc/internal/blocktx/store"
+	storeMocks "github.com/bitcoin-sv/arc/internal/blocktx/store/mocks"
+	"github.com/bitcoin-sv/arc/internal/p2p"
+	p2pMocks "github.com/bitcoin-sv/arc/internal/p2p/mocks"
+	"github.com/bitcoin-sv/arc/internal/testdata"
+)
+
+func TestFillGaps(t *testing.T) {
+	hostname, err := os.Hostname()
+	require.NoError(t, err)
+
+	tt := []struct {
+		name            string
+		hostname        string
+		getBlockGapsErr error
+		blockGaps       []*store.BlockGap
+
+		expectedError             error
+		expectedBlockGaps         int
+		expectedGetBlockGapsCalls int
+	}{
+		{
+			name:     "success",
+			hostname: hostname,
+			blockGaps: []*store.BlockGap{
+				{
+					Height: 822014,
+					Hash:   testdata.Block1Hash,
+				},
+				{
+					Height: 822015,
+					Hash:   testdata.Block2Hash,
+				},
+			},
+
+			expectedBlockGaps:         2,
+			expectedGetBlockGapsCalls: 1,
+		},
+		{
+			name:            "error getting block gaps",
+			hostname:        hostname,
+			getBlockGapsErr: errors.New("failed to get block gaps"),
+
+			expectedError:             blocktx.ErrGetBlockGapsFailed,
+			expectedGetBlockGapsCalls: 1,
+		},
+		{
+			name:      "no block gaps",
+			hostname:  hostname,
+			blockGaps: make([]*store.BlockGap, 0),
+
+			expectedGetBlockGapsCalls: 1,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			const fillGapsInterval = 50 * time.Millisecond
+
+			blockRequestCh := make(chan blocktx_p2p.BlockRequest, 10)
+
+			getBlockGapTestErr := tc.getBlockGapsErr
+			storeMock := &storeMocks.BlocktxStoreMock{
+				GetBlockGapsFunc: func(_ context.Context, _ int) ([]*store.BlockGap, error) {
+					if getBlockGapTestErr != nil {
+						return nil, getBlockGapTestErr
+					}
+
+					return tc.blockGaps, nil
+				},
+			}
+
+			peerMock := &p2pMocks.PeerIMock{
+				StringFunc: func() string {
+					return ""
+				},
+			}
+			peers := []p2p.PeerI{peerMock}
+
+			pm := &mocks.PeerManagerMock{
+				GetPeersFunc: func() []p2p.PeerI {
+					return peers
+				},
+			}
+
+			logger := slog.Default()
+			blockProcessCh := make(chan *bcnet.BlockMessagePeer, 10)
+
+			sut, err := blocktx.NewProcessor(logger, storeMock, blockRequestCh, blockProcessCh, blocktx.WithFillGaps(true, pm, fillGapsInterval), blocktx.WithRetentionDays(5))
+			require.NoError(t, err)
+			defer sut.Shutdown()
+
+			// when
+			err = blocktx.FillGaps(sut)
+			require.Equal(t, tc.expectedGetBlockGapsCalls, len(storeMock.GetBlockGapsCalls()))
+			if tc.expectedError != nil {
+				require.ErrorIs(t, err, tc.expectedError)
+				return
+			}
+
+			require.NoError(t, err)
+
+			gaps := sut.GetBlockGaps()
+
+			require.Len(t, gaps, len(tc.blockGaps))
+
+			// then
+			actualBlockGaps := 0
+			for range tc.blockGaps {
+				<-blockRequestCh
+				actualBlockGaps++
+			}
+			require.Equal(t, actualBlockGaps, tc.expectedBlockGaps)
+		})
+	}
+}
+
+func TestUnorphanRecentWrongOrphans(t *testing.T) {
+	tt := []struct {
+		name                     string
+		expectedUnorphanedBlocks []*blocktx_api.Block
+	}{
+		{
+			name: "success",
+			expectedUnorphanedBlocks: []*blocktx_api.Block{
+				{
+					Height: 822014,
+				},
+				{
+					Height: 822015,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			const unorphanRecentWrongOrphansInterval = 50 * time.Millisecond
+
+			storeMock := &storeMocks.BlocktxStoreMock{
+				UnorphanRecentWrongOrphansFunc: func(_ context.Context) ([]*blocktx_api.Block, error) {
+					return tc.expectedUnorphanedBlocks, nil
+				},
+			}
+
+			logger := slog.Default()
+			blockProcessCh := make(chan *bcnet.BlockMessagePeer, 10)
+
+			sut, err := blocktx.NewProcessor(logger, storeMock, nil, blockProcessCh, blocktx.WithUnorphanRecentWrongOrphans(true, unorphanRecentWrongOrphansInterval))
+			require.NoError(t, err)
+
+			// when
+			err = blocktx.UnorphanRecentWrongOrphans(sut)
+			require.NoError(t, err)
+
+			// then
+			sut.Shutdown()
+			actualUnorphanedBlocks, err := storeMock.UnorphanRecentWrongOrphans(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, len(tc.expectedUnorphanedBlocks), len(actualUnorphanedBlocks))
+		})
+	}
+}

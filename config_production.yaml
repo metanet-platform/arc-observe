@@ -1,0 +1,166 @@
+---
+common:
+  logLevel: INFO
+  logFormat: json
+  network: mainnet
+  prometheus:
+    enabled: false
+    addr: :2112
+    endpoint: /metrics
+  tracing:
+    enabled: false
+  messageQueue:
+    streaming:
+      enabled: true
+      fileStorage: false
+    URL: nats://localhost:4222
+  grpcMessageSize: 100000000
+
+api:
+  metamorphDialAddr: localhost:8001
+  blocktxDialAddr: localhost:8011
+  address: 0.0.0.0:9090
+  requestExtendedLogs: true
+  peerRpc:
+    host: seed.bitcoinsv.io
+    port: 8332
+    user: bitcoin
+    password: bitcoin
+  rejectCallbackContaining: [ "http://localhost", "https://localhost" ]
+  standardFormatSupported: true
+  defaultPolicy:
+    excessiveblocksize: 2000000000
+    blockmaxsize: 512000000
+    maxtxsizepolicy: 100000000
+    maxorphantxsize: 1000000000
+    datacarriersize: 4294967295
+    maxscriptsizepolicy: 100000000
+    maxopsperscriptpolicy: 4294967295
+    maxscriptnumlengthpolicy: 10000
+    maxpubkeyspermultisigpolicy: 4294967295
+    maxtxsigopscountspolicy: 4294967295
+    maxstackmemoryusagepolicy: 100000000
+    maxstackmemoryusageconsensus: 200000000
+    limitancestorcount: 10000
+    limitcpfpgroupmemberscount: 25
+    maxmempool: 2000000000
+    maxmempoolsizedisk: 0
+    mempoolmaxpercentcpfp: 10
+    acceptnonstdoutputs: true
+    datacarrier: true
+    minminingtxfee: 1e-8
+    maxstdtxvalidationduration: 3
+    maxnonstdtxvalidationduration: 1000
+    maxtxchainvalidationbudget: 50
+    validationclockcpu: true
+    minconsolidationfactor: 20
+    maxconsolidationinputscriptsize: 150
+    minconfconsolidationinput: 6
+    minconsolidationinputmaturity: 6
+    acceptnonstdconsolidationinput: false
+
+metamorph:
+  listenAddr: 0.0.0.0:8001
+  blocktxDialAddr: localhost:8011
+  callbackerDialAddr: localhost:8021
+  db:
+    mode: postgres
+    postgres:
+      host: <replace with your DB host>
+      port: 5432
+      name: postgres
+      user: postgres
+      password: <replace with your DB password>
+      sslMode: disable
+      maxIdleConns: 10
+      maxOpenConns: 80
+  maxRetries: 1000
+  statusUpdateInterval: 5s
+  doubleSpendTxStatusOlderThanInterval: 10m
+  doubleSpendCheckInterval: 10s
+  reAnnounceUnseenInterval: 60s
+  reAnnounceSeen:
+    pendingSince: 10m
+    lastConfirmedAgo: 10m
+  rejectPendingSeen:
+    enabled: false
+    lastRequestedAgo: 10m
+    blocksSince: 3
+  reRegisterSeen: 10m
+  monitorPeers: true
+  health:
+    minimumHealthyConnections: 1
+  stats:
+    notSeenTimeLimit: 10m
+    notFinalTimeLimit: 20m
+  bcnet:
+    mode: classic
+    network: mainnet
+    peers:
+      - host: seed.bitcoinsv.io
+        port:
+          p2p: 8333
+          zmq: 28332
+      - host: node.bitcoinsv.io
+        port:
+          p2p: 8333
+          zmq: 28332
+
+blocktx:
+  listenAddr: 0.0.0.0:8011
+  db:
+    mode: postgres
+    postgres:
+      host: <replace with your DB host>
+      port: 5432
+      name: postgres
+      user: postgres
+      password: <replace with your DB password>
+      sslMode: disable
+      maxIdleConns: 10
+      maxOpenConns: 80
+  recordRetentionDays: 28
+  registerTxsInterval: 10s
+  maxBlockProcessingDuration: 5m
+  monitorPeers: true
+  incomingIsLongest: false
+  fillGaps:
+    enabled: true
+    interval: 15m
+  unorphanRecentWrongOrphans:
+    enabled: false
+    interval: 5m
+  maxAllowedBlockHeightMismatch: 3
+  p2pReadBufferSize: 8388608
+  bcnet:
+    mode: classic
+    network: mainnet
+    peers:
+      - host: seed.bitcoinsv.io
+        port:
+          p2p: 8333
+          zmq: 28332
+      - host: node.bitcoinsv.io
+        port:
+          p2p: 8333
+          zmq: 28332
+
+callbacker:
+  listenAddr: 0.0.0.0:8021
+  pause: 1s
+  batchSendInterval: 5s
+  pruneOlderThan: 336h
+  pruneInterval: 24h
+  expiration: 24h
+  maxRetries: 10
+  db:
+    mode: postgres
+    postgres:
+      host: <replace with your DB host>
+      port: 5432
+      name: postgres
+      user: postgres
+      password: <replace with your DB password>
+      sslMode: disable
+      maxIdleConns: 10
+      maxOpenConns: 80

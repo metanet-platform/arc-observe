@@ -1,0 +1,33 @@
+.idea/
+.vscode/
+build/
+results/
+*.key
+.DS_Store
+cov.out
+cov_short.out
+gosec-report.json
+.scannerwork
+gotest.out
+*.env
+report.xml
+broadcaster-cli.yaml
+coverage_report.html
+coverage_report_short.html
+
+# Binaries
+arc
+
+# Logs
+logs/
+*.log
+
+# Config with credentials
+config_local.yaml
+
+# PM2
+.pm2/
+
+# Temporary files
+tmp/
+ecosystem.config.local.js
