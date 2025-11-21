@@ -91,3 +91,9 @@ func WithPublishMinedMessageSize(size int) func(*Processor) {
 		processor.publishMinedMessageSize = size
 	}
 }
+
+func WithStoreAllBlockTransactions(enabled bool) func(*Processor) {
+	return func(processor *Processor) {
+		processor.storeAllBlockTransactions = enabled
+	}
+}

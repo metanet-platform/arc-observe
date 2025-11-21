@@ -5,11 +5,12 @@ package mocks
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"github.com/bitcoin-sv/arc/internal/blocktx/blocktx_api"
 	"github.com/bitcoin-sv/arc/internal/blocktx/store"
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
-	"sync"
-	"time"
 )
 
 // Ensure, that BlocktxStoreMock does implement store.BlocktxStore.
@@ -144,7 +145,7 @@ type BlocktxStoreMock struct {
 	GetStatsFunc func(ctx context.Context, retentionDays int) (*store.Stats, error)
 
 	// InsertBlockTransactionsFunc mocks the InsertBlockTransactions method.
-	InsertBlockTransactionsFunc func(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex) error
+	InsertBlockTransactionsFunc func(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex, onlyRegistered bool) error
 
 	// LatestBlocksFunc mocks the LatestBlocks method.
 	LatestBlocksFunc func(ctx context.Context, numOfBlocks uint64) ([]*blocktx_api.Block, error)
@@ -158,6 +159,9 @@ type BlocktxStoreMock struct {
 	// RegisterTransactionsFunc mocks the RegisterTransactions method.
 	RegisterTransactionsFunc func(ctx context.Context, txHashes [][]byte) (int64, error)
 
+	// GetAllRegisteredHashesFunc mocks the GetAllRegisteredHashes method.
+	GetAllRegisteredHashesFunc func(ctx context.Context) ([][]byte, error)
+
 	// SetBlockProcessingFunc mocks the SetBlockProcessing method.
 	SetBlockProcessingFunc func(ctx context.Context, hash *chainhash.Hash, setProcessedBy string, lockTime time.Duration, maxParallelProcessing int) (string, error)
 
@@ -169,6 +173,9 @@ type BlocktxStoreMock struct {
 
 	// UpsertBlockFunc mocks the UpsertBlock method.
 	UpsertBlockFunc func(ctx context.Context, block *blocktx_api.Block) (uint64, error)
+
+	// UpsertBlockMerkleTreeFunc mocks the UpsertBlockMerkleTree method.
+	UpsertBlockMerkleTreeFunc func(ctx context.Context, blockHash []byte, merkleLeaves [][]byte) error
 
 	// VerifyMerkleRootsFunc mocks the VerifyMerkleRoots method.
 	VerifyMerkleRootsFunc func(ctx context.Context, merkleRoots []*blocktx_api.MerkleRootVerificationRequest, maxAllowedBlockHeightMismatch uint64) (*blocktx_api.MerkleRootVerificationResponse, error)
@@ -281,6 +288,8 @@ type BlocktxStoreMock struct {
 			BlockID uint64
 			// TxsWithMerklePaths is the txsWithMerklePaths argument value.
 			TxsWithMerklePaths []store.TxHashWithMerkleTreeIndex
+			// OnlyRegistered is the onlyRegistered argument value.
+			OnlyRegistered bool
 		}
 		// LatestBlocks holds details about calls to the LatestBlocks method.
 		LatestBlocks []struct {
@@ -309,6 +318,11 @@ type BlocktxStoreMock struct {
 			Ctx context.Context
 			// TxHashes is the txHashes argument value.
 			TxHashes [][]byte
+		}
+		// GetAllRegisteredHashes holds details about calls to the GetAllRegisteredHashes method.
+		GetAllRegisteredHashes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 		}
 		// SetBlockProcessing holds details about calls to the SetBlockProcessing method.
 		SetBlockProcessing []struct {
@@ -342,6 +356,15 @@ type BlocktxStoreMock struct {
 			// Block is the block argument value.
 			Block *blocktx_api.Block
 		}
+		// UpsertBlockMerkleTree holds details about calls to the UpsertBlockMerkleTree method.
+		UpsertBlockMerkleTree []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BlockHash is the blockHash argument value.
+			BlockHash []byte
+			// MerkleLeaves is the merkleLeaves argument value.
+			MerkleLeaves [][]byte
+		}
 		// VerifyMerkleRoots holds details about calls to the VerifyMerkleRoots method.
 		VerifyMerkleRoots []struct {
 			// Ctx is the ctx argument value.
@@ -371,10 +394,12 @@ type BlocktxStoreMock struct {
 	lockMarkBlockAsDone                   sync.RWMutex
 	lockPing                              sync.RWMutex
 	lockRegisterTransactions              sync.RWMutex
+	lockGetAllRegisteredHashes            sync.RWMutex
 	lockSetBlockProcessing                sync.RWMutex
 	lockUnorphanRecentWrongOrphans        sync.RWMutex
 	lockUpdateBlocksStatuses              sync.RWMutex
 	lockUpsertBlock                       sync.RWMutex
+	lockUpsertBlockMerkleTree             sync.RWMutex
 	lockVerifyMerkleRoots                 sync.RWMutex
 }
 
@@ -883,7 +908,7 @@ func (mock *BlocktxStoreMock) GetStatsCalls() []struct {
 }
 
 // InsertBlockTransactions calls InsertBlockTransactionsFunc.
-func (mock *BlocktxStoreMock) InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex) error {
+func (mock *BlocktxStoreMock) InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex, onlyRegistered bool) error {
 	if mock.InsertBlockTransactionsFunc == nil {
 		panic("BlocktxStoreMock.InsertBlockTransactionsFunc: method is nil but BlocktxStore.InsertBlockTransactions was just called")
 	}
@@ -891,15 +916,17 @@ func (mock *BlocktxStoreMock) InsertBlockTransactions(ctx context.Context, block
 		Ctx                context.Context
 		BlockID            uint64
 		TxsWithMerklePaths []store.TxHashWithMerkleTreeIndex
+		OnlyRegistered     bool
 	}{
 		Ctx:                ctx,
 		BlockID:            blockID,
 		TxsWithMerklePaths: txsWithMerklePaths,
+		OnlyRegistered:     onlyRegistered,
 	}
 	mock.lockInsertBlockTransactions.Lock()
 	mock.calls.InsertBlockTransactions = append(mock.calls.InsertBlockTransactions, callInfo)
 	mock.lockInsertBlockTransactions.Unlock()
-	return mock.InsertBlockTransactionsFunc(ctx, blockID, txsWithMerklePaths)
+	return mock.InsertBlockTransactionsFunc(ctx, blockID, txsWithMerklePaths, onlyRegistered)
 }
 
 // InsertBlockTransactionsCalls gets all the calls that were made to InsertBlockTransactions.
@@ -910,11 +937,13 @@ func (mock *BlocktxStoreMock) InsertBlockTransactionsCalls() []struct {
 	Ctx                context.Context
 	BlockID            uint64
 	TxsWithMerklePaths []store.TxHashWithMerkleTreeIndex
+	OnlyRegistered     bool
 } {
 	var calls []struct {
 		Ctx                context.Context
 		BlockID            uint64
 		TxsWithMerklePaths []store.TxHashWithMerkleTreeIndex
+		OnlyRegistered     bool
 	}
 	mock.lockInsertBlockTransactions.RLock()
 	calls = mock.calls.InsertBlockTransactions
@@ -1062,6 +1091,38 @@ func (mock *BlocktxStoreMock) RegisterTransactionsCalls() []struct {
 	mock.lockRegisterTransactions.RLock()
 	calls = mock.calls.RegisterTransactions
 	mock.lockRegisterTransactions.RUnlock()
+	return calls
+}
+
+// GetAllRegisteredHashes calls GetAllRegisteredHashesFunc.
+func (mock *BlocktxStoreMock) GetAllRegisteredHashes(ctx context.Context) ([][]byte, error) {
+	if mock.GetAllRegisteredHashesFunc == nil {
+		panic("BlocktxStoreMock.GetAllRegisteredHashesFunc: method is nil but BlocktxStore.GetAllRegisteredHashes was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetAllRegisteredHashes.Lock()
+	mock.calls.GetAllRegisteredHashes = append(mock.calls.GetAllRegisteredHashes, callInfo)
+	mock.lockGetAllRegisteredHashes.Unlock()
+	return mock.GetAllRegisteredHashesFunc(ctx)
+}
+
+// GetAllRegisteredHashesCalls gets all the calls that were made to GetAllRegisteredHashes.
+// Check the length with:
+//
+//	len(mockedBlocktxStore.GetAllRegisteredHashesCalls())
+func (mock *BlocktxStoreMock) GetAllRegisteredHashesCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetAllRegisteredHashes.RLock()
+	calls = mock.calls.GetAllRegisteredHashes
+	mock.lockGetAllRegisteredHashes.RUnlock()
 	return calls
 }
 
@@ -1214,6 +1275,46 @@ func (mock *BlocktxStoreMock) UpsertBlockCalls() []struct {
 	mock.lockUpsertBlock.RLock()
 	calls = mock.calls.UpsertBlock
 	mock.lockUpsertBlock.RUnlock()
+	return calls
+}
+
+// UpsertBlockMerkleTree calls UpsertBlockMerkleTreeFunc.
+func (mock *BlocktxStoreMock) UpsertBlockMerkleTree(ctx context.Context, blockHash []byte, merkleLeaves [][]byte) error {
+	if mock.UpsertBlockMerkleTreeFunc == nil {
+		panic("BlocktxStoreMock.UpsertBlockMerkleTreeFunc: method is nil but BlocktxStore.UpsertBlockMerkleTree was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		BlockHash    []byte
+		MerkleLeaves [][]byte
+	}{
+		Ctx:          ctx,
+		BlockHash:    blockHash,
+		MerkleLeaves: merkleLeaves,
+	}
+	mock.lockUpsertBlockMerkleTree.Lock()
+	mock.calls.UpsertBlockMerkleTree = append(mock.calls.UpsertBlockMerkleTree, callInfo)
+	mock.lockUpsertBlockMerkleTree.Unlock()
+	return mock.UpsertBlockMerkleTreeFunc(ctx, blockHash, merkleLeaves)
+}
+
+// UpsertBlockMerkleTreeCalls gets all the calls that were made to UpsertBlockMerkleTree.
+// Check the length with:
+//
+//	len(mockedBlocktxStore.UpsertBlockMerkleTreeCalls())
+func (mock *BlocktxStoreMock) UpsertBlockMerkleTreeCalls() []struct {
+	Ctx          context.Context
+	BlockHash    []byte
+	MerkleLeaves [][]byte
+} {
+	var calls []struct {
+		Ctx          context.Context
+		BlockHash    []byte
+		MerkleLeaves [][]byte
+	}
+	mock.lockUpsertBlockMerkleTree.RLock()
+	calls = mock.calls.UpsertBlockMerkleTree
+	mock.lockUpsertBlockMerkleTree.RUnlock()
 	return calls
 }
 

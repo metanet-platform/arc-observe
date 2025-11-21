@@ -90,6 +90,8 @@ type Processor struct {
 	unorphanRecentWrongOrphansInterval time.Duration
 	unorphanRecentWrongOrphansEnabled  bool
 
+	storeAllBlockTransactions bool
+
 	wg        *sync.WaitGroup
 	cancelAll context.CancelFunc
 	ctx       context.Context
@@ -569,9 +571,29 @@ func (p *Processor) insertBlockAndStoreTransactions(ctx context.Context, incomin
 		return err
 	}
 
-	if err = p.storeTransactions(ctx, blockID, incomingBlock, txHashes); err != nil {
+	hasRegisteredTxs, err := p.storeTransactions(ctx, blockID, incomingBlock, txHashes)
+	if err != nil {
 		p.logger.Error("unable to store transactions from block", slog.String("hash", getHashStringNoErr(incomingBlock.Hash)), slog.String("err", err.Error()))
 		return err
+	}
+
+	// Store complete merkle tree leaves only when storeAllBlockTransactions=false and block has registered transactions
+	// This allows calculating merkle proofs later without needing all transactions in block_transactions table
+	if !p.storeAllBlockTransactions && hasRegisteredTxs {
+		// Convert txHashes to [][]byte for storage as merkle leaves
+		merkleLeaves := make([][]byte, len(txHashes))
+		for i, hash := range txHashes {
+			merkleLeaves[i] = hash[:]
+		}
+
+		if err = p.store.UpsertBlockMerkleTree(ctx, incomingBlock.Hash, merkleLeaves); err != nil {
+			p.logger.Error("unable to store merkle leaves for block", slog.String("hash", getHashStringNoErr(incomingBlock.Hash)), slog.String("err", err.Error()))
+			return err
+		}
+
+		p.logger.Debug("Stored merkle leaves for block with registered transactions",
+			slog.String("hash", getHashStringNoErr(incomingBlock.Hash)),
+			slog.Int("leaf_count", len(txHashes)))
 	}
 
 	if err = p.handleSkippedBlock(ctx, incomingBlock); err != nil {
@@ -582,27 +604,65 @@ func (p *Processor) insertBlockAndStoreTransactions(ctx context.Context, incomin
 	return nil
 }
 
-func (p *Processor) storeTransactions(ctx context.Context, blockID uint64, block *blocktx_api.Block, txHashes []*chainhash.Hash) (err error) {
+func (p *Processor) storeTransactions(ctx context.Context, blockID uint64, block *blocktx_api.Block, txHashes []*chainhash.Hash) (hasRegisteredTxs bool, err error) {
 	ctx, span := tracing.StartTracing(ctx, "storeTransactions", p.tracingEnabled, p.tracingAttributes...)
 	defer func() {
 		tracing.EndTracing(span, err)
 	}()
 
-	txs := make([]store.TxHashWithMerkleTreeIndex, 0, p.transactionStorageBatchSize)
+	var txs []store.TxHashWithMerkleTreeIndex
 
-	for txIndex, hash := range txHashes {
-		tx := store.TxHashWithMerkleTreeIndex{
-			Hash:            hash[:],
-			MerkleTreeIndex: int64(txIndex),
+	// When storeAllBlockTransactions is false, fetch registered hashes and pre-filter
+	if !p.storeAllBlockTransactions {
+		// Fetch all registered transaction hashes
+		registeredHashes, err := p.store.GetAllRegisteredHashes(ctx)
+		if err != nil {
+			return false, errors.Join(ErrFailedToGetBlockTransactions, fmt.Errorf("failed to get registered hashes: %w", err))
 		}
 
-		txs = append(txs, tx)
+		// Build in-memory lookup map for O(1) checks
+		registeredMap := make(map[string]bool, len(registeredHashes))
+		for _, hash := range registeredHashes {
+			registeredMap[string(hash)] = true
+		}
+
+		// Filter txHashes to only include registered ones, preserving original merkle_tree_index
+		txs = make([]store.TxHashWithMerkleTreeIndex, 0, len(registeredMap))
+		for txIndex, hash := range txHashes {
+			hashBytes := hash[:]
+			if registeredMap[string(hashBytes)] {
+				tx := store.TxHashWithMerkleTreeIndex{
+					Hash:            hashBytes,
+					MerkleTreeIndex: int64(txIndex), // Keep original index from block
+				}
+				txs = append(txs, tx)
+			}
+		}
+
+		p.logger.Info("Filtered transactions for storage",
+			slog.String("hash", getHashStringNoErr(block.Hash)),
+			slog.Uint64("height", block.Height),
+			slog.Int("total_in_block", len(txHashes)),
+			slog.Int("registered_found", len(txs)))
+	} else {
+		// Store all transactions
+		txs = make([]store.TxHashWithMerkleTreeIndex, 0, len(txHashes))
+		for txIndex, hash := range txHashes {
+			tx := store.TxHashWithMerkleTreeIndex{
+				Hash:            hash[:],
+				MerkleTreeIndex: int64(txIndex),
+			}
+			txs = append(txs, tx)
+		}
 	}
 
 	blockhash, err := chainhash.NewHash(block.Hash)
 	if err != nil {
-		return errors.Join(ErrFailedToParseBlockHash, fmt.Errorf("block height: %d", block.Height), err)
+		return false, errors.Join(ErrFailedToParseBlockHash, fmt.Errorf("block height: %d", block.Height), err)
 	}
+
+	// Track whether we found any registered transactions
+	hasRegisteredTxs = len(txs) > 0
 
 	totalSize := len(txHashes)
 
@@ -653,7 +713,8 @@ func (p *Processor) storeTransactions(ctx context.Context, blockID uint64, block
 			batch = txs[i*batchSize : (i+1)*batchSize]
 		}
 		g.Go(func() error {
-			insertErr := p.store.InsertBlockTransactions(ctx, blockID, batch)
+			// Pass false for onlyRegistered since we've already pre-filtered if needed
+			insertErr := p.store.InsertBlockTransactions(ctx, blockID, batch, false)
 			if insertErr != nil {
 				return errors.Join(ErrFailedToInsertBlockTransactions, insertErr)
 			}
@@ -665,10 +726,10 @@ func (p *Processor) storeTransactions(ctx context.Context, blockID uint64, block
 
 	err = g.Wait()
 	if err != nil {
-		return errors.Join(ErrFailedToInsertBlockTransactions, fmt.Errorf("block height: %d", block.Height), err)
+		return false, errors.Join(ErrFailedToInsertBlockTransactions, fmt.Errorf("block height: %d", block.Height), err)
 	}
 
-	return nil
+	return hasRegisteredTxs, nil
 }
 
 func (p *Processor) logProgress(now time.Time, inserted int64, totalSize int, blockhash *chainhash.Hash, block *blocktx_api.Block) {

@@ -876,9 +876,9 @@ func TestPostgresStore_InsertBlockTransactions(t *testing.T) {
 			testBlockID := uint64(9736)
 
 			// when
-			err := sut.InsertBlockTransactions(ctx, testBlockID, tc.txsWithMerklePaths)
+			err := sut.InsertBlockTransactions(ctx, testBlockID, tc.txsWithMerklePaths, false)
 			if tc.upsertRepeat {
-				err = sut.InsertBlockTransactions(ctx, testBlockID, tc.txsWithMerklePaths)
+				err = sut.InsertBlockTransactions(ctx, testBlockID, tc.txsWithMerklePaths, false)
 				require.NoError(t, err)
 			}
 
@@ -985,7 +985,7 @@ func BenchmarkInsertBlockTransactions(b *testing.B) {
 			b.StartTimer()
 
 			for i := 0; i < tc.iterations; i++ {
-				err := sut.InsertBlockTransactions(ctx, testBlockID, txsWithMerklePaths[i*tc.batch:(i+1)*tc.batch-1])
+				err := sut.InsertBlockTransactions(ctx, testBlockID, txsWithMerklePaths[i*tc.batch:(i+1)*tc.batch-1], false)
 				require.NoError(b, err)
 			}
 		})
@@ -1025,10 +1025,10 @@ func TestPostgresStore_InsertTransactions_CompetingBlocks(t *testing.T) {
 	}
 
 	// when
-	err := sut.InsertBlockTransactions(ctx, testBlockID, txsWithMerklePaths)
+	err := sut.InsertBlockTransactions(ctx, testBlockID, txsWithMerklePaths, false)
 	require.NoError(t, err)
 
-	err = sut.InsertBlockTransactions(ctx, competingBlockID, competingTxsWithMerklePaths)
+	err = sut.InsertBlockTransactions(ctx, competingBlockID, competingTxsWithMerklePaths, false)
 	require.NoError(t, err)
 
 	// then

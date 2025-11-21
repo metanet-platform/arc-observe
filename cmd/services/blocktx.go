@@ -120,6 +120,7 @@ func StartBlockTx(logger *slog.Logger, btxCfg *config.BlocktxConfig, commonCfg *
 		blocktx.WithMinedTxsChan(minedTxsChan),
 		blocktx.WithMaxBlockProcessingDuration(btxCfg.MaxBlockProcessingDuration),
 		blocktx.WithIncomingIsLongest(btxCfg.IncomingIsLongest),
+		blocktx.WithStoreAllBlockTransactions(btxCfg.StoreAllBlockTransactions),
 		blocktx.WithUnorphanRecentWrongOrphans(btxCfg.UnorphanRecentWrongOrphans.Enabled, btxCfg.UnorphanRecentWrongOrphans.Interval),
 		blocktx.WithFillGaps(btxCfg.FillGaps.Enabled, pm, btxCfg.FillGaps.Interval),
 	)

@@ -40,11 +40,12 @@ const (
 type BlocktxStore interface {
 	UnorphanRecentWrongOrphans(ctx context.Context) (healedOrphans []*blocktx_api.Block, err error)
 	RegisterTransactions(ctx context.Context, txHashes [][]byte) (rowsAffected int64, err error)
+	GetAllRegisteredHashes(ctx context.Context) ([][]byte, error)
 	GetBlock(ctx context.Context, hash *chainhash.Hash) (*blocktx_api.Block, error)
 	GetLongestBlockByHeight(ctx context.Context, height uint64) (*blocktx_api.Block, error)
 	GetChainTip(ctx context.Context) (*blocktx_api.Block, error)
 	UpsertBlock(ctx context.Context, block *blocktx_api.Block) (uint64, error)
-	InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []TxHashWithMerkleTreeIndex) error
+	InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []TxHashWithMerkleTreeIndex, onlyRegistered bool) error
 	MarkBlockAsDone(ctx context.Context, hash *chainhash.Hash, size uint64, txCount uint64) error
 	GetBlockGaps(ctx context.Context, heightRange int) ([]*BlockGap, error)
 	ClearBlocktxTable(ctx context.Context, retentionDays int32, table ClearBlocktxTable) (int64, error)
@@ -56,6 +57,7 @@ type BlocktxStore interface {
 	GetOrphansBackToNonOrphanAncestor(ctx context.Context, hash []byte) (orphans []*blocktx_api.Block, nonOrphanAncestor *blocktx_api.Block, err error)
 	GetRegisteredTxsByBlockHashes(ctx context.Context, blockHashes [][]byte) ([]BlockTransaction, error)
 	GetBlockTransactionsHashes(ctx context.Context, blockHash []byte) ([]*chainhash.Hash, error)
+	UpsertBlockMerkleTree(ctx context.Context, blockHash []byte, merkleLeaves [][]byte) error
 	UpdateBlocksStatuses(ctx context.Context, blockStatusUpdates []BlockStatusUpdate) error
 	GetStats(ctx context.Context, retentionDays int) (*Stats, error)
 	LatestBlocks(ctx context.Context, numOfBlocks uint64) ([]*blocktx_api.Block, error)

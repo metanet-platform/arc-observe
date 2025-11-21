@@ -64,6 +64,9 @@ func StartMetamorph(logger *slog.Logger, mtmCfg *config.MetamorphConfig, commonC
 	}
 	stoppableWithError = append(stoppableWithError, metamorphStore)
 
+	// Add broadcast configuration to mediator options
+	bcMediatorOpts = getBcMediatorOpts(mtmCfg, bcMediatorOpts)
+
 	bcMediator, messenger, pm, multicaster, statusMessageCh, err := setupMtmBcNetworkCommunication(logger, metamorphStore, mtmCfg, mtmCfg.Health.MinimumHealthyConnections, bcMediatorOpts)
 	if err != nil {
 		stopFn()
@@ -215,6 +218,13 @@ func enableTracing(commonCfg *config.CommonConfig, logger *slog.Logger) (shutdow
 	bcMediatorOpts = append(bcMediatorOpts, bcnet.WithTracer(attributes...))
 
 	return shutdownFns, optsServer, processorOpts, bcMediatorOpts
+}
+
+func getBcMediatorOpts(mtmCfg *config.MetamorphConfig, baseOpts []bcnet.Option) []bcnet.Option {
+	opts := make([]bcnet.Option, len(baseOpts))
+	copy(opts, baseOpts)
+	opts = append(opts, bcnet.WithBroadcastEnabled(mtmCfg.BroadcastTransactions))
+	return opts
 }
 
 func startZMQs(logger *slog.Logger, peers []*config.PeerConfig, statusMessageCh chan *metamorph_p2p.TxStatusMessage) ([]*metamorph.ZMQ, error) {

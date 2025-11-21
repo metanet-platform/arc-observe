@@ -42,6 +42,7 @@ type Mediator struct {
 	p2pMessenger *p2p.NetworkMessenger
 	mcaster      *mcast.Multicaster
 
+	broadcastEnabled  bool
 	tracingEnabled    bool
 	tracingAttributes []attribute.KeyValue
 }
@@ -61,6 +62,12 @@ func WithTracer(attr ...attribute.KeyValue) Option {
 	}
 }
 
+func WithBroadcastEnabled(enabled bool) Option {
+	return func(p *Mediator) {
+		p.broadcastEnabled = enabled
+	}
+}
+
 func NewMediator(l *slog.Logger, classic bool, messenger *p2p.NetworkMessenger, mcaster *mcast.Multicaster, opts ...Option) *Mediator {
 	mode := "classic"
 	if !classic {
@@ -68,10 +75,11 @@ func NewMediator(l *slog.Logger, classic bool, messenger *p2p.NetworkMessenger, 
 	}
 
 	m := &Mediator{
-		logger:       l.With("mode", mode),
-		classic:      classic,
-		p2pMessenger: messenger,
-		mcaster:      mcaster,
+		logger:           l.With("mode", mode),
+		classic:          classic,
+		p2pMessenger:     messenger,
+		mcaster:          mcaster,
+		broadcastEnabled: true, // Default to enabled for backward compatibility
 	}
 
 	for _, opt := range opts {
@@ -100,6 +108,12 @@ func (m *Mediator) AnnounceTxAsync(ctx context.Context, hash *chh.Hash, rawTx []
 	var err error
 	var h *chainhash.Hash
 	defer tracing.EndTracing(span, err)
+
+	// Skip broadcasting if disabled in config
+	if !m.broadcastEnabled {
+		m.logger.Debug("Skipping transaction broadcast (disabled in config)", slog.String("hash", hash.String()))
+		return
+	}
 
 	if m.classic {
 		h, err = chainhash.NewHashFromStr(hash.String())

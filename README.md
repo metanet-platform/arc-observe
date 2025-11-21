@@ -208,8 +208,58 @@ ARC Observe runs 5 separate PM2 processes:
 ### Configuration Files
 
 - **config_production.yaml**: Production configuration with database and network settings
+- **config_local.yaml**: Local development configuration
 - **ecosystem.config.js**: PM2 process configuration with memory limits and auto-restart
 - **build.sh**: Script to rebuild the ARC binary after updates
+
+### Storage & Broadcasting Optimization
+
+ARC Observe includes two configurable parameters to optimize database storage and control network broadcasting:
+
+#### 1. `storeAllBlockTransactions` (blocktx config)
+
+Controls whether to store ALL transactions from blocks or only user-submitted ones:
+
+- **`false` (recommended)**: Only stores user-submitted transactions (~95% storage reduction)
+- **`true`**: Stores ALL transactions from every block (massive storage requirements)
+
+```yaml
+blocktx:
+  storeAllBlockTransactions: false  # Recommended for most deployments
+```
+
+**Why disable it?**
+- Arc-observe's primary purpose is transaction broadcasting, not full blockchain indexing
+- Only user-submitted transactions need tracking for mining notifications
+- `registered_transactions` + `metamorph.transactions` provide all necessary data
+- Saves terabytes of database storage over time
+
+**BUMP Merkle Proof Generation:**
+When `storeAllBlockTransactions: false`, BlockTx uses an optimized approach for generating BUMP (BRC-74) merkle proofs:
+- Stores complete merkle tree leaves (all tx hashes) in `blocks.merkle_leaves` BYTEA[] column
+- Bitcoin P2P sends transaction hashes only (~32 bytes each), not full transaction data
+- For 600M txs/block: 23 GB BYTEA[] vs 60 GB in `block_transactions` rows (60% storage savings)
+- PostgreSQL TOAST handles large arrays via automatic chunking (1 GB chunks)
+- Single sequential write (15-40 sec) vs 600M row inserts (7-14 min) = **20-50x faster**
+- Complete merkle tree required for valid BUMP proofs (cannot reduce to partial tree)
+
+When `storeAllBlockTransactions: true`, all transactions fill `block_transactions` table and Metamorph constructs BUMP proofs from that table instead (slower query, larger storage).
+
+#### 2. `broadcastTransactions` (metamorph config)
+
+Controls whether transactions are broadcast to the Bitcoin P2P network:
+
+- **`true` (default)**: Transactions are broadcast to Bitcoin network peers
+- **`false`**: Store-only mode - transactions stored but NOT broadcast
+
+```yaml
+metamorph:
+  broadcastTransactions: false  # Set to false for store-only mode
+```
+
+**Use Cases:**
+- **Broadcasting enabled (true)**: Normal transaction relay service
+- **Broadcasting disabled (false)**: Testing, analytics, transaction storage without network propagation
 
 ### Updating and Rebuilding
 

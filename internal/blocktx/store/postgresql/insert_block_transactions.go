@@ -16,7 +16,8 @@ import (
 )
 
 // InsertBlockTransactions inserts the transaction hashes for a given block hash
-func (p *PostgreSQL) InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex) (err error) {
+// The onlyRegistered parameter is kept for interface compatibility but filtering is done before calling this function
+func (p *PostgreSQL) InsertBlockTransactions(ctx context.Context, blockID uint64, txsWithMerklePaths []store.TxHashWithMerkleTreeIndex, onlyRegistered bool) (err error) {
 	ctx, span := tracing.StartTracing(ctx, "InsertBlockTransactions", p.tracingEnabled, append(p.tracingAttributes, attribute.Int("updates", len(txsWithMerklePaths)))...)
 	defer func() {
 		tracing.EndTracing(span, err)
@@ -65,6 +66,9 @@ func (p *PostgreSQL) InsertBlockTransactions(ctx context.Context, blockID uint64
 	if err != nil {
 		return fmt.Errorf("failed to insert rows: %w", err)
 	}
+
+	// Note: Pre-filtering is now done in processor.go before calling this function
+	// The onlyRegistered parameter is kept for interface compatibility
 
 	return nil
 }

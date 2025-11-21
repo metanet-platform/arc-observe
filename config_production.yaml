@@ -48,7 +48,7 @@ api:
     mempoolmaxpercentcpfp: 10
     acceptnonstdoutputs: true
     datacarrier: true
-    minminingtxfee: 1e-8
+    minminingtxfee: 1e-6
     maxstdtxvalidationduration: 3
     maxnonstdtxvalidationduration: 1000
     maxtxchainvalidationbudget: 50
@@ -88,6 +88,7 @@ metamorph:
     blocksSince: 3
   reRegisterSeen: 10m
   monitorPeers: true
+  broadcastTransactions: false  # Set to false to disable broadcasting to Bitcoin network (store-only mode)
   health:
     minimumHealthyConnections: 1
   stats:
@@ -98,10 +99,6 @@ metamorph:
     network: mainnet
     peers:
       - host: seed.bitcoinsv.io
-        port:
-          p2p: 8333
-          zmq: 28332
-      - host: node.bitcoinsv.io
         port:
           p2p: 8333
           zmq: 28332
@@ -124,6 +121,7 @@ blocktx:
   maxBlockProcessingDuration: 5m
   monitorPeers: true
   incomingIsLongest: false
+  storeAllBlockTransactions: false  # Set to true to keep ALL transactions in blocks (uses massive storage). Set to false to only keep registered (user-submitted) transactions.
   fillGaps:
     enabled: true
     interval: 15m
@@ -137,10 +135,6 @@ blocktx:
     network: mainnet
     peers:
       - host: seed.bitcoinsv.io
-        port:
-          p2p: 8333
-          zmq: 28332
-      - host: node.bitcoinsv.io
         port:
           p2p: 8333
           zmq: 28332

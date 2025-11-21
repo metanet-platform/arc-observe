@@ -99,6 +99,7 @@ type MetamorphConfig struct {
 	MaxRetries                           int                                  `mapstructure:"maxRetries"`
 	StatusUpdateInterval                 time.Duration                        `mapstructure:"statusUpdateInterval"`
 	MonitorPeers                         bool                                 `mapstructure:"monitorPeers"`
+	BroadcastTransactions                bool                                 `mapstructure:"broadcastTransactions"`
 	Health                               *HealthConfig                        `mapstructure:"health"`
 	Stats                                *StatsConfig                         `mapstructure:"stats"`
 	BlockchainNetwork                    *BlockchainNetwork[*MetamorphGroups] `mapstructure:"bcnet"`
@@ -136,6 +137,7 @@ type BlocktxConfig struct {
 	MessageQueue                  *MessageQueueConfig                `mapstructure:"mq"`
 	P2pReadBufferSize             int                                `mapstructure:"p2pReadBufferSize"`
 	IncomingIsLongest             bool                               `mapstructure:"incomingIsLongest"`
+	StoreAllBlockTransactions     bool                               `mapstructure:"storeAllBlockTransactions"`
 	BlockchainNetwork             *BlockchainNetwork[*BlocktxGroups] `mapstructure:"bcnet"`
 }
 
